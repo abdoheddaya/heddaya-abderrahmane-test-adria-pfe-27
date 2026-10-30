@@ -102,4 +102,57 @@ public class AccountService {
 
         return account;
     }
+
+    @Transactional
+    public TransferResult transfer(
+            UUID sourceId,
+            UUID destinationId,
+            BigDecimal amount,
+            String currency
+    ) {
+        if (sourceId == null || destinationId == null) {
+            throw new IllegalArgumentException("Les deux comptes sont obligatoires");
+        }
+        if (sourceId.equals(destinationId)) {
+            throw new IllegalArgumentException("Les comptes doivent être différents");
+        }
+        if (amount == null || amount.signum() <= 0) {
+            throw new IllegalArgumentException("Le montant doit être strictement positif");
+        }
+
+        // Verrouiller toujours dans le même ordre évite un blocage entre virements concurrents.
+        UUID firstId = sourceId.compareTo(destinationId) < 0 ? sourceId : destinationId;
+        UUID secondId = sourceId.compareTo(destinationId) < 0 ? destinationId : sourceId;
+
+        Account first = accountRepository.findByIdForUpdate(firstId)
+                .orElseThrow(() -> new NoSuchElementException("Compte introuvable : " + firstId));
+        Account second = accountRepository.findByIdForUpdate(secondId)
+                .orElseThrow(() -> new NoSuchElementException("Compte introuvable : " + secondId));
+
+        Account source = sourceId.equals(firstId) ? first : second;
+        Account destination = destinationId.equals(firstId) ? first : second;
+
+        if (source.getStatus() != AccountStatus.ACTIVE
+                || destination.getStatus() != AccountStatus.ACTIVE) {
+            throw new IllegalArgumentException("Les deux comptes doivent être actifs");
+        }
+        if (currency == null
+                || !source.getCurrency().equalsIgnoreCase(currency)
+                || !destination.getCurrency().equalsIgnoreCase(currency)) {
+            throw new IllegalArgumentException("Les devises ne correspondent pas");
+        }
+        if (source.getBalance().compareTo(amount) < 0) {
+            throw new IllegalArgumentException("Solde insuffisant");
+        }
+
+        source.setBalance(source.getBalance().subtract(amount));
+        destination.setBalance(destination.getBalance().add(amount));
+
+        accountRepository.save(source);
+        accountRepository.save(destination);
+        return new TransferResult(source, destination);
+    }
+
+    public record TransferResult(Account source, Account destination) {
+    }
 }

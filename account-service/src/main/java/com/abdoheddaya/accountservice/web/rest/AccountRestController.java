@@ -63,4 +63,13 @@ public class AccountRestController {
     ) {
         return accountService.credit(id, request.amount(), request.currency());
     }
+    @PostMapping("/transfer")
+    public AccountService.TransferResult transfer(@Valid @RequestBody TransferRequest request) {
+        return accountService.transfer(
+                request.sourceAccountId(),
+                request.destinationAccountId(),
+                request.amount(),
+                request.currency()
+        );
+    }
 }
