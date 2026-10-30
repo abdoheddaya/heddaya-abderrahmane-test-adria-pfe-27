@@ -2,6 +2,9 @@ package com.abdoheddaya.transactionservice.service;
 
 import com.abdoheddaya.transactionservice.client.AccountSnapshot;
 import com.abdoheddaya.transactionservice.domain.BankTransaction;
+import com.abdoheddaya.transactionservice.event.TransactionCreatedEvent;
+import org.springframework.context.ApplicationEventPublisher;
+import java.time.Instant;
 import com.abdoheddaya.transactionservice.repository.BankTransactionRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -17,15 +20,18 @@ public class BankTransactionService {
     private final BankTransactionRepository repository;
     private final AccountGateway accountGateway;
     private final BigDecimal maxAmount;
+    private final ApplicationEventPublisher eventPublisher;
 
     public BankTransactionService(
             BankTransactionRepository repository,
             AccountGateway accountGateway,
-            @Value("${bank.transaction.max-amount}") BigDecimal maxAmount
+            @Value("${bank.transaction.max-amount}") BigDecimal maxAmount,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.repository = repository;
         this.accountGateway = accountGateway;
         this.maxAmount = maxAmount;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -78,6 +84,15 @@ public class BankTransactionService {
         );
 
         accountGateway.debit(accountId, amount, currency);
+        eventPublisher.publishEvent(new TransactionCreatedEvent(
+                UUID.randomUUID(),
+                "TransactionCreated",
+                transaction.getId(),
+                accountId,
+                amount,
+                currency.toUpperCase(),
+                Instant.now()
+        ));
         return transaction;
     }
 
