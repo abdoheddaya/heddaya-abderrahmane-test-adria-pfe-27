@@ -4,6 +4,7 @@ import com.abdoheddaya.accountservice.domain.Account;
 import com.abdoheddaya.accountservice.repository.AccountRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.abdoheddaya.accountservice.domain.AccountStatus;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -52,5 +53,53 @@ public class AccountService {
     @Transactional(readOnly = true)
     public List<Account> getAllAccounts() {
         return accountRepository.findAll();
+    }
+
+    @Transactional
+    public Account changeStatus(UUID id, AccountStatus status) {
+        if (status == null) {
+            throw new IllegalArgumentException("Le statut est obligatoire");
+        }
+
+        Account account = getAccount(id);
+        account.setStatus(status);
+        return accountRepository.save(account);
+    }
+
+    @Transactional
+    public Account debit(UUID id, BigDecimal amount, String currency) {
+        Account account = lockedActiveAccount(id, amount, currency);
+
+        if (account.getBalance().compareTo(amount) < 0) {
+            throw new IllegalArgumentException("Solde insuffisant");
+        }
+
+        account.setBalance(account.getBalance().subtract(amount));
+        return accountRepository.save(account);
+    }
+
+    @Transactional
+    public Account credit(UUID id, BigDecimal amount, String currency) {
+        Account account = lockedActiveAccount(id, amount, currency);
+        account.setBalance(account.getBalance().add(amount));
+        return accountRepository.save(account);
+    }
+
+    private Account lockedActiveAccount(UUID id, BigDecimal amount, String currency) {
+        if (amount == null || amount.signum() <= 0) {
+            throw new IllegalArgumentException("Le montant doit être strictement positif");
+        }
+
+        Account account = accountRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new NoSuchElementException("Compte introuvable : " + id));
+
+        if (account.getStatus() != AccountStatus.ACTIVE) {
+            throw new IllegalArgumentException("Le compte est bloqué");
+        }
+        if (currency == null || !account.getCurrency().equalsIgnoreCase(currency)) {
+            throw new IllegalArgumentException("La devise ne correspond pas au compte");
+        }
+
+        return account;
     }
 }
